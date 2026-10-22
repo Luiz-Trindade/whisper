@@ -1,7 +1,7 @@
 {
   "name": "whisper-app",
   "version": "0.0.1",
-  "description": "A Quasar Project",
+  "description": "Whisper is a PWA chat application that allows users to communicate in real-time using a peer-to-peer network. It is built using the Quasar Framework and Vue.js, and it leverages the Trystero library for peer-to-peer communication.",
   "productName": "Whisper",
   "author": "Luiz-Trindade <luiz.gabriel.m.trindade@gmail.com>",
   "type": "module",
@@ -10,13 +10,15 @@
     "lint": "prettier --write \"**/*.{js,vue,css,scss,html,md,json}\" --ignore-path .gitignore && eslint --fix -c ./eslint.config.js \"./src*/**/*.{js,cjs,mjs,vue}\"",
     "lint:check": "prettier \"**/*.{js,vue,css,scss,html,md,json}\" --ignore-path .gitignore && eslint -c ./eslint.config.js \"./src*/**/*.{js,cjs,mjs,vue}\"",
     "dev": "quasar dev",
-    "build": "quasar build",
+    "build": "quasar build -m pwa",
     "postinstall": "quasar prepare --silent"
   },
   "dependencies": {
-    "pinia": "^4.0.2",
     "@quasar/extras": "^2.1.0",
+    "localforage": "^1.10.0",
+    "pinia": "^4.0.2",
     "quasar": "^2.35.2",
+    "trystero": "^0.26.0",
     "vue": "^3.5.22",
     "vue-router": "^5.0.6"
   },
