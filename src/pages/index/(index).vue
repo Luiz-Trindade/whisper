@@ -29,7 +29,7 @@
                 </q-input>
             </div>
 
-            <!-- Chats List -->
+            <!-- Chats List (Responsiva com Ellipsis) -->
             <q-scroll-area class="col">
                 <q-list separator dark class="bg-transparent q-px-sm">
                     <q-item
@@ -37,10 +37,10 @@
                         :key="chat.id"
                         clickable
                         v-ripple
-                        class="q-py-md rounded-borders"
+                        class="q-py-md rounded-borders row items-center no-wrap"
                         @click="openChat(chat)"
                     >
-                        <q-item-section avatar>
+                        <q-item-section avatar class="col-auto">
                             <q-avatar color="grey-8" text-color="white" size="50px">
                                 <img
                                     v-if="chat.avatar"
@@ -55,16 +55,19 @@
                             </q-avatar>
                         </q-item-section>
 
-                        <q-item-section>
-                            <q-item-label class="text-weight-bold text-subtitle1 text-white">
+                        <!-- min-width: 0 é crucial para o ellipsis funcionar no Flexbox -->
+                        <q-item-section class="col overflow-hidden" style="min-width: 0">
+                            <q-item-label
+                                class="text-weight-bold text-subtitle1 text-white ellipsis"
+                            >
                                 {{ chat.nickname }}
                             </q-item-label>
                             <q-item-label caption class="text-grey-5 text-body2 ellipsis">
-                                {{ chat.lastMessage || 'Tap to start chatting' }}
+                                {{ truncateMessage(chat.lastMessage, 45) }}
                             </q-item-label>
                         </q-item-section>
 
-                        <q-item-section side class="text-right">
+                        <q-item-section side class="col-auto text-right q-pl-sm">
                             <div class="text-caption text-grey-6">{{ chat.time }}</div>
                             <q-badge v-if="chat.unread" color="primary" rounded class="q-mt-xs">
                                 {{ chat.unread }}
@@ -196,7 +199,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, inject, onMounted, onUnmounted, nextTick } from 'vue'
 import localforage from 'localforage'
 import { joinRoom } from '@trystero-p2p/mqtt'
 import mqtt from 'mqtt'
@@ -219,11 +222,18 @@ const newMessage = ref('')
 const peerConnected = ref(false)
 const chatScrollRef = ref(null)
 
-let roomInstance = null
-let chatAction = null
-let profileAction = null
-let disconnectTimer = null
-let mqttClient = null
+// Usando shallowRef para evitar reatividade profunda acidental e erros no-undef do ESLint
+const roomInstance = shallowRef(null)
+const chatAction = shallowRef(null)
+const profileAction = shallowRef(null)
+const disconnectTimer = shallowRef(null)
+const mqttClient = shallowRef(null)
+
+// Função auxiliar para truncar as mensagens longas na lista de chats
+const truncateMessage = (text, maxLength = 45) => {
+    if (!text) return 'Tap to start chatting'
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+}
 
 // --- Criptografia Ponta a Ponta (E2EE) - Web Crypto API Nativa ---
 const hexToBuf = (hex) => {
@@ -268,7 +278,6 @@ const encryptMessage = async (roomId, msgObj) => {
 
     const cipherBuffer = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data)
 
-    // Envelopa a cifra mantendo os metadados necessários para o roteamento do MQTT limpos
     return {
         id: msgObj.id,
         sentBy: msgObj.sentBy,
@@ -279,7 +288,7 @@ const encryptMessage = async (roomId, msgObj) => {
 }
 
 const decryptMessage = async (roomId, payload) => {
-    if (!payload.e) return payload // Fallback para ler histórico de msgs antigas (sem criptografia)
+    if (!payload.e) return payload
     try {
         const key = await getAesKey(roomId)
         const iv = hexToBuf(payload.iv)
@@ -392,23 +401,23 @@ const updateContactProfile = async (peerId, nickname, avatar) => {
 }
 
 const syncMqttCloudQueue = (roomId) => {
-    if (mqttClient) {
-        mqttClient.end()
-        mqttClient = null
+    if (mqttClient.value) {
+        mqttClient.value.end()
+        mqttClient.value = null
     }
 
-    mqttClient = mqtt.connect(MQTT_BROKER_WS, {
+    mqttClient.value = mqtt.connect(MQTT_BROKER_WS, {
         clientId: 'whisper_' + myPeerId.value + '_' + Math.random().toString(36).substring(2, 6),
         clean: true,
     })
 
     const topicPattern = `whisper/v1/store/${roomId}/+`
 
-    mqttClient.on('connect', () => {
-        mqttClient.subscribe(topicPattern, { qos: 1 })
+    mqttClient.value.on('connect', () => {
+        mqttClient.value.subscribe(topicPattern, { qos: 1 })
     })
 
-    mqttClient.on('message', async (topic, payload) => {
+    mqttClient.value.on('message', async (topic, payload) => {
         if (!payload || payload.length === 0) return
 
         try {
@@ -437,8 +446,7 @@ const syncMqttCloudQueue = (roomId) => {
                     }
                 }
 
-                // Limpa a mensagem retida do broker independentemente do sucesso da descriptografia
-                mqttClient.publish(topic, '', { retain: true, qos: 1 })
+                mqttClient.value.publish(topic, '', { retain: true, qos: 1 })
             }
         } catch {
             // Ignora payloads malformados
@@ -447,12 +455,12 @@ const syncMqttCloudQueue = (roomId) => {
 }
 
 const publishToMqttCloud = (roomId, payloadObj) => {
-    if (!mqttClient || !mqttClient.connected) return
+    if (!mqttClient.value || !mqttClient.value.connected) return
 
     const topic = `whisper/v1/store/${roomId}/${payloadObj.id}`
     const payload = JSON.stringify(payloadObj)
 
-    mqttClient.publish(topic, payload, { retain: true, qos: 1 })
+    mqttClient.value.publish(topic, payload, { retain: true, qos: 1 })
 }
 
 const openChat = async (chat) => {
@@ -466,23 +474,23 @@ const openChat = async (chat) => {
 
     if (hideFooter) hideFooter.value = true
 
-    roomInstance = joinRoom(TRYSTERO_CONFIG, chat.roomId)
-    chatAction = roomInstance.makeAction('chatMessage')
-    profileAction = roomInstance.makeAction('profileSync')
+    roomInstance.value = joinRoom(TRYSTERO_CONFIG, chat.roomId)
+    chatAction.value = roomInstance.value.makeAction('chatMessage')
+    profileAction.value = roomInstance.value.makeAction('profileSync')
 
     syncMqttCloudQueue(chat.roomId)
 
-    roomInstance.onPeerJoin = () => {
-        if (disconnectTimer) {
-            clearTimeout(disconnectTimer)
-            disconnectTimer = null
+    roomInstance.value.onPeerJoin = () => {
+        if (disconnectTimer.value) {
+            clearTimeout(disconnectTimer.value)
+            disconnectTimer.value = null
         }
 
         if (!peerConnected.value) {
             peerConnected.value = true
 
-            if (profileAction) {
-                profileAction.send({
+            if (profileAction.value) {
+                profileAction.value.send({
                     nickname: myNickname.value,
                     avatar: myAvatar.value,
                 })
@@ -490,16 +498,16 @@ const openChat = async (chat) => {
         }
     }
 
-    roomInstance.onPeerLeave = () => {
-        if (disconnectTimer) clearTimeout(disconnectTimer)
+    roomInstance.value.onPeerLeave = () => {
+        if (disconnectTimer.value) clearTimeout(disconnectTimer.value)
 
-        disconnectTimer = setTimeout(() => {
+        disconnectTimer.value = setTimeout(() => {
             peerConnected.value = false
-            disconnectTimer = null
+            disconnectTimer.value = null
         }, 4000)
     }
 
-    profileAction.onMessage = async (profileData) => {
+    profileAction.value.onMessage = async (profileData) => {
         if (profileData && activeChat.value) {
             await updateContactProfile(
                 activeChat.value.id,
@@ -509,7 +517,7 @@ const openChat = async (chat) => {
         }
     }
 
-    chatAction.onMessage = async (rawMsg) => {
+    chatAction.value.onMessage = async (rawMsg) => {
         if (!activeChat.value || !rawMsg) return
 
         const incomingMsg = await decryptMessage(activeChat.value.roomId, rawMsg)
@@ -526,9 +534,9 @@ const openChat = async (chat) => {
             await saveMessagesToStorage(activeChat.value.roomId, activeChat.value.messages)
             scrollToBottom()
 
-            if (mqttClient && mqttClient.connected) {
+            if (mqttClient.value && mqttClient.value.connected) {
                 const topic = `whisper/v1/store/${activeChat.value.roomId}/${incomingMsg.id}`
-                mqttClient.publish(topic, '', { retain: true, qos: 1 })
+                mqttClient.value.publish(topic, '', { retain: true, qos: 1 })
             }
         }
     }
@@ -550,16 +558,14 @@ const sendMessage = async () => {
         timestamp: nowMs,
     }
 
-    // Criptografa a mensagem antes de enviar para a rede
     const encryptedPayload = await encryptMessage(activeChat.value.roomId, msgObj)
 
     publishToMqttCloud(activeChat.value.roomId, encryptedPayload)
 
-    if (peerConnected.value && chatAction) {
-        chatAction.send(encryptedPayload)
+    if (peerConnected.value && chatAction.value) {
+        chatAction.value.send(encryptedPayload)
     }
 
-    // Salva a mensagem legível (descriptografada) no armazenamento local do dispositivo
     activeChat.value.messages.push(msgObj)
     activeChat.value.messages = sortMessagesByTimestamp(activeChat.value.messages)
 
@@ -573,19 +579,19 @@ const sendMessage = async () => {
 }
 
 const closeChat = async () => {
-    if (disconnectTimer) {
-        clearTimeout(disconnectTimer)
-        disconnectTimer = null
+    if (disconnectTimer.value) {
+        clearTimeout(disconnectTimer.value)
+        disconnectTimer.value = null
     }
-    if (mqttClient) {
-        mqttClient.end()
-        mqttClient = null
+    if (mqttClient.value) {
+        mqttClient.value.end()
+        mqttClient.value = null
     }
-    if (roomInstance) {
-        roomInstance.leave()
-        roomInstance = null
-        chatAction = null
-        profileAction = null
+    if (roomInstance.value) {
+        roomInstance.value.leave()
+        roomInstance.value = null
+        chatAction.value = null
+        profileAction.value = null
     }
     peerConnected.value = false
     activeChat.value = null
@@ -595,12 +601,12 @@ const closeChat = async () => {
 }
 
 onUnmounted(() => {
-    if (disconnectTimer) clearTimeout(disconnectTimer)
-    if (mqttClient) {
-        mqttClient.end()
+    if (disconnectTimer.value) clearTimeout(disconnectTimer.value)
+    if (mqttClient.value) {
+        mqttClient.value.end()
     }
-    if (roomInstance) {
-        roomInstance.leave()
+    if (roomInstance.value) {
+        roomInstance.value.leave()
     }
 })
 </script>
@@ -608,5 +614,11 @@ onUnmounted(() => {
 <style scoped>
 .leading-tight {
     line-height: 1.2;
+}
+
+.ellipsis {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 </style>
