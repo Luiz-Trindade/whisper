@@ -63,7 +63,7 @@
                                 {{ chat.nickname }}
                             </q-item-label>
                             <q-item-label caption class="text-grey-5 text-body2 ellipsis">
-                                {{ truncateMessage(chat.lastMessage, 45) }}
+                                {{ truncateMessage(chat.lastMessage) }}
                             </q-item-label>
                         </q-item-section>
 
@@ -230,7 +230,7 @@ const disconnectTimer = shallowRef(null)
 const mqttClient = shallowRef(null)
 
 // Função auxiliar para truncar as mensagens longas na lista de chats
-const truncateMessage = (text, maxLength = 45) => {
+const truncateMessage = (text, maxLength = 15) => {
     if (!text) return 'Tap to start chatting'
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
 }
