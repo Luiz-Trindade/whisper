@@ -18,6 +18,7 @@ A minimal, decentralized, peer-to-peer (P2P) messaging application with a store-
 ## ✨ Features
 
 - **WebRTC Direct P2P Messaging**: Ultra-fast, encrypted peer-to-peer messaging using WebRTC via Trystero.
+- **E2EE**: End-to-end encryption for private messaging.
 - **MQTT Cloud Queue Fallback**: Offline messaging support using MQTT Retained Messages. If your peer is offline, messages are stored in the broker cloud queue and automatically delivered and cleared once they reconnect.
 - **Privacy & Local Storage**: All messages, contact list, and profile info are stored locally on your device via `localforage` (IndexedDB/Local Storage).
 - **QR Code Quick Pairing**: Instantly add contacts by scanning their QR code using the built-in HTML5 camera scanner.
@@ -30,9 +31,9 @@ A minimal, decentralized, peer-to-peer (P2P) messaging application with a store-
 
 1. **Direct Connection (Online)**: When both peers are active in the chat, messages are delivered directly over WebRTC Data Channels with zero server involvement.
 2. **Offline Store-and-Forward (MQTT Queue)**:
-   - When sending a message, it is published to the MQTT broker under a deterministic topic with `retain: true`.
-   - You can safely close the app after sending.
-   - Once your contact opens the app, their client subscribes to the room topic, downloads all pending cloud messages, saves them locally, and clears the topic queue on the broker.
+    - When sending a message, it is published to the MQTT broker under a deterministic topic with `retain: true`.
+    - You can safely close the app after sending.
+    - Once your contact opens the app, their client subscribes to the room topic, downloads all pending cloud messages, saves them locally, and clears the topic queue on the broker.
 
 ---
 
