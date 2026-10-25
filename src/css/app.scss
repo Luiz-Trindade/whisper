@@ -1,1 +1,40 @@
-// app global css
+// App global CSS
+
+body.body--dark {
+  background-color: $dark-page;
+  color: #f1f5f9;
+}
+
+// Estilização customizada para a barra de pesquisa
+.custom-search-input {
+  .q-field__control {
+    background-color: $secondary !important;
+    border-radius: 10px;
+    padding: 0 12px;
+  }
+
+  .q-field__native,
+  .q-field__prefix,
+  .q-field__suffix,
+  .q-field__input {
+    color: #e2e8f0;
+  }
+
+  .q-placeholder {
+    color: #64748b;
+  }
+}
+
+// Badge P2P estilizado (como na imagem)
+.p2p-badge {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+  color: $positive !important;
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-weight: 600;
+}
+
+// Ajuste das abas/navegação inferior
+.q-tabs--dense .q-tab {
+  min-height: 48px;
+}

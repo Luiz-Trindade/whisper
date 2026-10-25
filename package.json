@@ -15,8 +15,12 @@
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",
+    "@trystero-p2p/mqtt": "^0.26.0",
+    "html5-qrcode": "^2.3.8",
     "localforage": "^1.10.0",
+    "mqtt": "^5.16.1",
     "pinia": "^4.0.2",
+    "qrcode.vue": "^3.11.0",
     "quasar": "^2.35.2",
     "trystero": "^0.26.0",
     "vue": "^3.5.22",
