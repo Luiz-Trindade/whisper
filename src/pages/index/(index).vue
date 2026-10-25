@@ -222,14 +222,13 @@ const newMessage = ref('')
 const peerConnected = ref(false)
 const chatScrollRef = ref(null)
 
-// Usando shallowRef para evitar reatividade profunda acidental e erros no-undef do ESLint
 const roomInstance = shallowRef(null)
 const chatAction = shallowRef(null)
 const profileAction = shallowRef(null)
 const disconnectTimer = shallowRef(null)
 const mqttClient = shallowRef(null)
+const presenceInterval = shallowRef(null)
 
-// Função auxiliar para truncar as mensagens longas na lista de chats
 const truncateMessage = (text, maxLength = 15) => {
     if (!text) return 'Tap to start chatting'
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
@@ -329,7 +328,7 @@ onMounted(async () => {
     myNickname.value = savedNick || ''
 
     const savedAvatar = await localforage.getItem('myAvatar')
-    myAvatar.value = savedAvatar || ''
+    if (savedAvatar) myAvatar.value = savedAvatar
 
     await loadChats()
 })
@@ -400,6 +399,7 @@ const updateContactProfile = async (peerId, nickname, avatar) => {
     }
 }
 
+// Configura o MQTT Cloud para Fila + Canal de Presença (Heartbeat)
 const syncMqttCloudQueue = (roomId) => {
     if (mqttClient.value) {
         mqttClient.value.end()
@@ -411,15 +411,49 @@ const syncMqttCloudQueue = (roomId) => {
         clean: true,
     })
 
-    const topicPattern = `whisper/v1/store/${roomId}/+`
+    const storeTopicPattern = `whisper/v1/store/${roomId}/+`
+    const presenceTopic = `whisper/v1/presence/${roomId}`
 
     mqttClient.value.on('connect', () => {
-        mqttClient.value.subscribe(topicPattern, { qos: 1 })
+        mqttClient.value.subscribe(storeTopicPattern, { qos: 1 })
+        mqttClient.value.subscribe(presenceTopic, { qos: 0 })
+
+        // Envia sinal de presença imediato ao conectar
+        sendPresencePing(roomId)
+
+        // Configura intervalo para enviar ping a cada 3 segundos (mantém o status Online ativo)
+        if (presenceInterval.value) clearInterval(presenceInterval.value)
+        presenceInterval.value = setInterval(() => {
+            sendPresencePing(roomId)
+        }, 3000)
     })
 
     mqttClient.value.on('message', async (topic, payload) => {
         if (!payload || payload.length === 0) return
 
+        // Se a mensagem vier do canal de presença
+        if (topic === presenceTopic) {
+            try {
+                const presenceObj = JSON.parse(payload.toString())
+                if (presenceObj && presenceObj.sender !== myPeerId.value) {
+                    // Recebeu sinal do contato na nuvem, marca como Online
+                    peerConnected.value = true
+                    if (disconnectTimer.value) {
+                        clearTimeout(disconnectTimer.value)
+                        disconnectTimer.value = null
+                    }
+                    // Configura timeout para cair para Offline se não receber ping em 6 segundos
+                    disconnectTimer.value = setTimeout(() => {
+                        peerConnected.value = false
+                    }, 6000)
+                }
+            } catch {
+                // Ignora erros de parse de presença
+            }
+            return
+        }
+
+        // Fluxo normal de mensagens da fila
         try {
             const rawMsg = JSON.parse(payload.toString())
 
@@ -454,6 +488,13 @@ const syncMqttCloudQueue = (roomId) => {
     })
 }
 
+const sendPresencePing = (roomId) => {
+    if (!mqttClient.value || !mqttClient.value.connected || !activeChat.value) return
+    const presenceTopic = `whisper/v1/presence/${roomId}`
+    const payload = JSON.stringify({ sender: myPeerId.value, time: Date.now() })
+    mqttClient.value.publish(presenceTopic, payload, { qos: 0 })
+}
+
 const publishToMqttCloud = (roomId, payloadObj) => {
     if (!mqttClient.value || !mqttClient.value.connected) return
 
@@ -480,31 +521,15 @@ const openChat = async (chat) => {
 
     syncMqttCloudQueue(chat.roomId)
 
+    // Fallback para WebRTC caso funcione diretamente na rede
     roomInstance.value.onPeerJoin = () => {
-        if (disconnectTimer.value) {
-            clearTimeout(disconnectTimer.value)
-            disconnectTimer.value = null
+        peerConnected.value = true
+        if (profileAction.value) {
+            profileAction.value.send({
+                nickname: myNickname.value,
+                avatar: myAvatar.value,
+            })
         }
-
-        if (!peerConnected.value) {
-            peerConnected.value = true
-
-            if (profileAction.value) {
-                profileAction.value.send({
-                    nickname: myNickname.value,
-                    avatar: myAvatar.value,
-                })
-            }
-        }
-    }
-
-    roomInstance.value.onPeerLeave = () => {
-        if (disconnectTimer.value) clearTimeout(disconnectTimer.value)
-
-        disconnectTimer.value = setTimeout(() => {
-            peerConnected.value = false
-            disconnectTimer.value = null
-        }, 4000)
     }
 
     profileAction.value.onMessage = async (profileData) => {
@@ -562,7 +587,7 @@ const sendMessage = async () => {
 
     publishToMqttCloud(activeChat.value.roomId, encryptedPayload)
 
-    if (peerConnected.value && chatAction.value) {
+    if (chatAction.value) {
         chatAction.value.send(encryptedPayload)
     }
 
@@ -579,6 +604,10 @@ const sendMessage = async () => {
 }
 
 const closeChat = async () => {
+    if (presenceInterval.value) {
+        clearInterval(presenceInterval.value)
+        presenceInterval.value = null
+    }
     if (disconnectTimer.value) {
         clearTimeout(disconnectTimer.value)
         disconnectTimer.value = null
@@ -601,6 +630,7 @@ const closeChat = async () => {
 }
 
 onUnmounted(() => {
+    if (presenceInterval.value) clearInterval(presenceInterval.value)
     if (disconnectTimer.value) clearTimeout(disconnectTimer.value)
     if (mqttClient.value) {
         mqttClient.value.end()
